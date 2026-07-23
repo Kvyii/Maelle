@@ -11,3 +11,4 @@ build/
 *.keystore
 output-metadata.json
 .kotlin/
+gradle/gradle-daemon-jvm.properties
