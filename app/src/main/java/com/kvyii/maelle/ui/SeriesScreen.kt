@@ -15,7 +15,10 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.DownloadDone
+import androidx.compose.material.icons.filled.Pause
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.RadioButtonUnchecked
+import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.outlined.StarBorder
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -84,9 +87,15 @@ fun SeriesScreen(
         }
     ) { padding ->
         LazyColumn(Modifier.fillMaxSize().padding(padding)) {
-            state.downloadProgress?.let { progress ->
+            state.download?.let { download ->
                 item {
-                    DownloadBanner(progress, onDismiss = vm::dismissDownloadProgress)
+                    DownloadBanner(
+                        download = download,
+                        onPause = vm::pauseDownload,
+                        onResume = vm::resumeDownload,
+                        onStop = vm::stopDownload,
+                        onDismiss = vm::dismissDownload,
+                    )
                 }
             }
             item {
@@ -195,45 +204,70 @@ private fun SheetAction(
 }
 
 @Composable
-private fun DownloadBanner(progress: DownloadProgress, onDismiss: () -> Unit) {
-    Column(Modifier.fillMaxWidth().padding(16.dp)) {
-        when {
-            !progress.finished -> {
-                val total = if (progress.total == Int.MAX_VALUE) null else progress.total
+private fun DownloadBanner(
+    download: com.kvyii.maelle.data.SeriesDownload,
+    onPause: () -> Unit,
+    onResume: () -> Unit,
+    onStop: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
                 Text(
-                    if (total == null) "Preparing downloads…"
-                    else "Downloading ${progress.done} / $total",
+                    when (download.status) {
+                        com.kvyii.maelle.data.DownloadStatus.Running ->
+                            if (download.total == null) "Preparing downloads…"
+                            else "Downloading ${download.done} / ${download.total}"
+                        com.kvyii.maelle.data.DownloadStatus.Paused ->
+                            "Paused at ${download.done}" + (download.total?.let { " / $it" } ?: "")
+                        com.kvyii.maelle.data.DownloadStatus.Cancelled ->
+                            "Stopped — ${download.done - download.failed.size} chapters saved"
+                        com.kvyii.maelle.data.DownloadStatus.Finished ->
+                            if (download.total == 0) "Nothing to download — all unread chapters are saved."
+                            else "Downloaded ${download.done - download.failed.size} of ${download.total} chapters."
+                    },
                     style = MaterialTheme.typography.labelLarge,
                 )
-                if (total == null) {
-                    androidx.compose.material3.LinearProgressIndicator(
-                        modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
-                    )
-                } else {
-                    androidx.compose.material3.LinearProgressIndicator(
-                        progress = { progress.done.toFloat() / total.coerceAtLeast(1) },
-                        modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                if (download.failed.isNotEmpty()) {
+                    Text(
+                        "Failed after retries: ${download.failed.take(3).joinToString()}" +
+                            if (download.failed.size > 3) " +${download.failed.size - 3} more" else "",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.error,
                     )
                 }
             }
 
-            else -> Row(verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1f)) {
-                    Text(
-                        if (progress.total == 0) "Nothing to download — all unread chapters are saved."
-                        else "Downloaded ${progress.total - progress.failed.size} of ${progress.total} chapters.",
-                        style = MaterialTheme.typography.labelLarge,
-                    )
-                    if (progress.failed.isNotEmpty()) {
-                        Text(
-                            "Failed after retries: ${progress.failed.take(3).joinToString()}" +
-                                if (progress.failed.size > 3) " +${progress.failed.size - 3} more" else "",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.error,
-                        )
+            if (download.active) {
+                if (download.status == com.kvyii.maelle.data.DownloadStatus.Paused) {
+                    IconButton(onClick = onResume) {
+                        Icon(Icons.Filled.PlayArrow, contentDescription = "Resume")
+                    }
+                } else {
+                    IconButton(onClick = onPause) {
+                        Icon(Icons.Filled.Pause, contentDescription = "Pause")
                     }
                 }
+                IconButton(onClick = onStop) {
+                    Icon(Icons.Filled.Stop, contentDescription = "Stop")
+                }
+            } else {
                 androidx.compose.material3.TextButton(onClick = onDismiss) { Text("Dismiss") }
+            }
+        }
+
+        if (download.active) {
+            val total = download.total
+            if (total == null || total == 0) {
+                androidx.compose.material3.LinearProgressIndicator(
+                    modifier = Modifier.fillMaxWidth().padding(top = 6.dp),
+                )
+            } else {
+                androidx.compose.material3.LinearProgressIndicator(
+                    progress = { download.done.toFloat() / total },
+                    modifier = Modifier.fillMaxWidth().padding(top = 6.dp),
+                )
             }
         }
     }

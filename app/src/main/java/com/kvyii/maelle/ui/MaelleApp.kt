@@ -3,6 +3,7 @@ package com.kvyii.maelle.ui
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Book
+import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Icon
@@ -25,10 +26,11 @@ import com.kvyii.maelle.AppContainer
 private sealed class Tab(val route: String, val label: String, val icon: ImageVector) {
     object Library : Tab("library", "Library", Icons.Filled.Book)
     object Search : Tab("search", "Search", Icons.Filled.Search)
+    object Downloads : Tab("downloads", "Downloads", Icons.Filled.Download)
     object Settings : Tab("settings", "Settings", Icons.Filled.Settings)
 }
 
-private val tabs = listOf(Tab.Library, Tab.Search, Tab.Settings)
+private val tabs = listOf(Tab.Library, Tab.Search, Tab.Downloads, Tab.Settings)
 
 @Composable
 fun MaelleApp(container: AppContainer) {
@@ -75,6 +77,11 @@ fun MaelleApp(container: AppContainer) {
             }
             composable(Tab.Search.route) {
                 SearchScreen(container, onOpenSeries = { id ->
+                    navController.navigate("series/$id")
+                })
+            }
+            composable(Tab.Downloads.route) {
+                DownloadsScreen(container, onOpenSeries = { id ->
                     navController.navigate("series/$id")
                 })
             }

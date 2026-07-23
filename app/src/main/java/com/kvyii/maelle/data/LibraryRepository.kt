@@ -10,8 +10,8 @@ import com.kvyii.maelle.core.stripHtml
 import com.kvyii.maelle.data.db.ChapterEntity
 import com.kvyii.maelle.data.db.MaelleDatabase
 import com.kvyii.maelle.data.db.SeriesEntity
+import com.kvyii.maelle.data.db.SeriesDownloadCount
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
@@ -114,36 +114,14 @@ class LibraryRepository(context: Context, private val settings: SettingsReposito
         cleaned
     }
 
-    data class BatchDownloadResult(val total: Int, val failed: List<String>)
+    /** Unread, not-yet-downloaded chapters, oldest first — the batch-download queue. */
+    suspend fun pendingDownloads(seriesId: Long): List<ChapterEntity> =
+        chapterDao.getUnreadUndownloaded(seriesId)
 
-    /**
-     * Download every unread, not-yet-downloaded chapter of a series, oldest
-     * first. Each chapter gets [attemptsPerChapter] tries with backoff before
-     * being reported as failed; one bad chapter never aborts the batch.
-     */
-    suspend fun downloadAllUnread(
-        seriesId: Long,
-        attemptsPerChapter: Int = 3,
-        onProgress: (done: Int, total: Int) -> Unit = { _, _ -> },
-    ): BatchDownloadResult = withContext(Dispatchers.IO) {
-        val pending = chapterDao.getUnreadUndownloaded(seriesId)
-        val failed = mutableListOf<String>()
-        pending.forEachIndexed { index, chapter ->
-            var succeeded = false
-            for (attempt in 1..attemptsPerChapter) {
-                try {
-                    downloadChapter(chapter)
-                    succeeded = true
-                    break
-                } catch (e: Exception) {
-                    if (attempt < attemptsPerChapter) delay(1000L * attempt)
-                }
-            }
-            if (!succeeded) failed += chapter.name
-            onProgress(index + 1, pending.size)
-        }
-        BatchDownloadResult(pending.size, failed)
-    }
+    suspend fun seriesName(seriesId: Long): String? = seriesDao.getSeries(seriesId)?.name
+
+    fun observeDownloadCounts(): Flow<List<SeriesDownloadCount>> =
+        chapterDao.observeDownloadCounts()
 
     suspend fun undownloadChapter(chapterId: Long) = withContext(Dispatchers.IO) {
         val chapter = chapterDao.getChapter(chapterId) ?: return@withContext

@@ -9,6 +9,8 @@ import com.kvyii.maelle.data.AppTheme
 import com.kvyii.maelle.data.AssistantSettings
 import com.kvyii.maelle.data.Providers
 import com.kvyii.maelle.data.ReaderPreferences
+import com.kvyii.maelle.data.SeriesDownload
+import com.kvyii.maelle.data.db.SeriesDownloadCount
 import com.kvyii.maelle.data.db.ChapterEntity
 import com.kvyii.maelle.data.db.SeriesEntity
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -67,21 +69,16 @@ class SearchViewModel(private val c: AppContainer) : ViewModel() {
         c.library.openSeries(result.apiName, result.url, addToLibrary)
 }
 
-data class DownloadProgress(val done: Int, val total: Int, val failed: List<String> = emptyList()) {
-    val finished: Boolean get() = done >= total
-}
-
 data class SeriesUiState(
     val series: SeriesEntity? = null,
     val chapters: List<ChapterEntity> = emptyList(),
     val readCount: Int = 0,
     val refreshing: Boolean = false,
-    val downloadProgress: DownloadProgress? = null,
+    val download: SeriesDownload? = null,
 )
 
 class SeriesViewModel(private val c: AppContainer, private val seriesId: Long) : ViewModel() {
     private val refreshing = MutableStateFlow(false)
-    private val downloadProgress = MutableStateFlow<DownloadProgress?>(null)
 
     val state: StateFlow<SeriesUiState> =
         combineSeries().stateIn(
@@ -92,10 +89,11 @@ class SeriesViewModel(private val c: AppContainer, private val seriesId: Long) :
         val seriesFlow = c.library.observeSeries(seriesId)
         val chaptersFlow = c.library.observeChapters(seriesId)
         val readFlow = c.library.observeReadCount(seriesId)
+        val downloadFlow = c.downloads.downloads.map { it[seriesId] }
         return kotlinx.coroutines.flow.combine(
-            seriesFlow, chaptersFlow, readFlow, refreshing, downloadProgress
-        ) { series, chapters, read, isRefreshing, progress ->
-            SeriesUiState(series, chapters, read, isRefreshing, progress)
+            seriesFlow, chaptersFlow, readFlow, refreshing, downloadFlow
+        ) { series, chapters, read, isRefreshing, download ->
+            SeriesUiState(series, chapters, read, isRefreshing, download)
         }
     }
 
@@ -140,22 +138,34 @@ class SeriesViewModel(private val c: AppContainer, private val seriesId: Long) :
         }
     }
 
-    /** Download every unread chapter with per-chapter retry, reporting progress. */
-    fun downloadAllUnread() {
-        if (downloadProgress.value?.finished == false) return // already running
-        viewModelScope.launch {
-            downloadProgress.value = DownloadProgress(0, Int.MAX_VALUE)
-            val result = c.library.downloadAllUnread(seriesId) { done, total ->
-                downloadProgress.value = DownloadProgress(done, total)
-            }
-            downloadProgress.value =
-                DownloadProgress(result.total, result.total, result.failed)
-        }
-    }
+    fun downloadAllUnread() = c.downloads.start(seriesId)
+    fun pauseDownload() = c.downloads.pause(seriesId)
+    fun resumeDownload() = c.downloads.resume(seriesId)
+    fun stopDownload() = c.downloads.stop(seriesId)
+    fun dismissDownload() = c.downloads.clear(seriesId)
+}
 
-    fun dismissDownloadProgress() {
-        downloadProgress.value = null
-    }
+data class DownloadsUiState(
+    val active: List<SeriesDownload> = emptyList(),
+    val downloaded: List<SeriesDownloadCount> = emptyList(),
+)
+
+class DownloadsViewModel(private val c: AppContainer) : ViewModel() {
+    val state: StateFlow<DownloadsUiState> =
+        kotlinx.coroutines.flow.combine(
+            c.downloads.downloads,
+            c.library.observeDownloadCounts(),
+        ) { active, counts ->
+            DownloadsUiState(
+                active = active.values.sortedBy { it.seriesName },
+                downloaded = counts,
+            )
+        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), DownloadsUiState())
+
+    fun pause(seriesId: Long) = c.downloads.pause(seriesId)
+    fun resume(seriesId: Long) = c.downloads.resume(seriesId)
+    fun stop(seriesId: Long) = c.downloads.stop(seriesId)
+    fun clear(seriesId: Long) = c.downloads.clear(seriesId)
 }
 
 class SettingsViewModel(private val c: AppContainer) : ViewModel() {
@@ -264,6 +274,7 @@ class MaelleViewModelFactory(
         modelClass.isAssignableFrom(LibraryViewModel::class.java) -> LibraryViewModel(c) as T
         modelClass.isAssignableFrom(SearchViewModel::class.java) -> SearchViewModel(c) as T
         modelClass.isAssignableFrom(SettingsViewModel::class.java) -> SettingsViewModel(c) as T
+        modelClass.isAssignableFrom(DownloadsViewModel::class.java) -> DownloadsViewModel(c) as T
         modelClass.isAssignableFrom(SeriesViewModel::class.java) ->
             SeriesViewModel(c, args.getValue("seriesId")) as T
         modelClass.isAssignableFrom(ReaderViewModel::class.java) ->

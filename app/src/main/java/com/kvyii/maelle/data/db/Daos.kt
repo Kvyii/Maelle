@@ -8,6 +8,14 @@ import androidx.room.Transaction
 import androidx.room.Update
 import kotlinx.coroutines.flow.Flow
 
+/** Row for the Downloads tab: how much of each series is saved locally. */
+data class SeriesDownloadCount(
+    val seriesId: Long,
+    val name: String,
+    val downloaded: Int,
+    val total: Int,
+)
+
 @Dao
 interface SeriesDao {
     @Query("SELECT * FROM series WHERE inLibrary = 1 ORDER BY name COLLATE NOCASE")
@@ -97,6 +105,16 @@ interface ChapterDao {
             "AND readAt IS NULL AND downloadPath IS NULL ORDER BY orderIndex ASC"
     )
     suspend fun getUnreadUndownloaded(seriesId: Long): List<ChapterEntity>
+
+    /** Per-series downloaded-chapter tallies, for the Downloads tab. */
+    @Query(
+        "SELECT s.id AS seriesId, s.name AS name, " +
+            "SUM(CASE WHEN c.downloadPath IS NOT NULL THEN 1 ELSE 0 END) AS downloaded, " +
+            "COUNT(c.id) AS total " +
+            "FROM series s JOIN chapters c ON c.seriesId = s.id " +
+            "GROUP BY s.id HAVING downloaded > 0 ORDER BY s.name COLLATE NOCASE"
+    )
+    fun observeDownloadCounts(): Flow<List<SeriesDownloadCount>>
 
     @Query("UPDATE chapters SET readAt = :readAt WHERE seriesId = :seriesId")
     suspend fun markAllRead(seriesId: Long, readAt: Long?)
