@@ -20,7 +20,12 @@ data class SeriesDownloadCount(
 
 @Dao
 interface SeriesDao {
-    @Query("SELECT * FROM series WHERE inLibrary = 1 ORDER BY name COLLATE NOCASE")
+    // Most-recently-read first; unread-yet series fall back to when they were
+    // added, then alphabetical.
+    @Query(
+        "SELECT * FROM series WHERE inLibrary = 1 " +
+            "ORDER BY lastReadAt DESC, addedAt DESC, name COLLATE NOCASE"
+    )
     fun observeLibrary(): Flow<List<SeriesEntity>>
 
     @Query("SELECT * FROM series WHERE id = :id")
@@ -41,8 +46,8 @@ interface SeriesDao {
     @Query("UPDATE series SET inLibrary = :inLibrary WHERE id = :id")
     suspend fun setInLibrary(id: Long, inLibrary: Boolean)
 
-    @Query("UPDATE series SET lastReadChapterId = :chapterId WHERE id = :seriesId")
-    suspend fun setLastReadChapter(seriesId: Long, chapterId: Long)
+    @Query("UPDATE series SET lastReadChapterId = :chapterId, lastReadAt = :readAt WHERE id = :seriesId")
+    suspend fun setLastReadChapter(seriesId: Long, chapterId: Long, readAt: Long)
 
     /** Insert or return the existing row id for this series. */
     @Transaction

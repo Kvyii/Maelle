@@ -109,6 +109,13 @@ class LibraryRepository(context: Context, private val settings: SettingsReposito
     suspend fun markAllRead(seriesId: Long, read: Boolean) =
         chapterDao.markAllRead(seriesId, if (read) System.currentTimeMillis() else null)
 
+    /** All chapters oldest → newest, so the reader can index and find neighbors. */
+    suspend fun orderedChapters(seriesId: Long): List<ChapterEntity> =
+        withContext(Dispatchers.IO) { chapterDao.getChaptersOldestFirst(seriesId) }
+
+    suspend fun getChapter(chapterId: Long): ChapterEntity? =
+        withContext(Dispatchers.IO) { chapterDao.getChapter(chapterId) }
+
     /** Fetch and clean a chapter's text, using the cached file when downloaded. */
     suspend fun chapterText(chapterId: Long): String = withContext(Dispatchers.IO) {
         val chapter = chapterDao.getChapter(chapterId) ?: error("No chapter $chapterId")
@@ -148,7 +155,7 @@ class LibraryRepository(context: Context, private val settings: SettingsReposito
     }
 
     suspend fun setLastReadChapter(seriesId: Long, chapterId: Long) =
-        seriesDao.setLastReadChapter(seriesId, chapterId)
+        seriesDao.setLastReadChapter(seriesId, chapterId, System.currentTimeMillis())
 
     private fun LoadResponse.chapters(): List<ChapterData> = when (this) {
         is StreamResponse -> data

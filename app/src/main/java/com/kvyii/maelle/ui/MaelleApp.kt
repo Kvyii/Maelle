@@ -86,7 +86,7 @@ fun MaelleApp(container: AppContainer) {
                 })
             }
             composable(Tab.Settings.route) {
-                SettingsScreen(onOpen = { route -> navController.navigate(route) })
+                SettingsScreen(container, onOpen = { route -> navController.navigate(route) })
             }
             composable("settings/preferences") {
                 PreferencesScreen(container, onBack = { navController.popBackStack() })

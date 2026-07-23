@@ -1,5 +1,6 @@
 package com.kvyii.maelle.ui
 
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -15,21 +16,23 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.AutoAwesome
-import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.Button
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -40,13 +43,17 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.platform.LocalUriHandler
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.kvyii.maelle.AppContainer
 import com.kvyii.maelle.BuildConfig
+import com.kvyii.maelle.R
 import com.kvyii.maelle.data.AppTheme
 import com.kvyii.maelle.data.AssistantSettings
 import com.kvyii.maelle.data.ReaderFont
@@ -55,11 +62,23 @@ import com.kvyii.maelle.data.ReaderPreferences
 /** Settings hub: a menu of sub-screens. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SettingsScreen(onOpen: (String) -> Unit) {
+fun SettingsScreen(container: AppContainer, onOpen: (String) -> Unit) {
+    val vm: SettingsViewModel = viewModel(factory = MaelleViewModelFactory(container))
     val uriHandler = LocalUriHandler.current
+    val updateState by vm.updateState.collectAsStateWithLifecycle()
 
     Scaffold(topBar = { TopAppBar(title = { Text("Settings") }) }) { padding ->
         Column(Modifier.fillMaxSize().padding(padding)) {
+            // App logo at the top of the settings menu.
+            Image(
+                painter = painterResource(R.drawable.splash_icon),
+                contentDescription = "Maelle",
+                modifier = Modifier
+                    .padding(vertical = 24.dp)
+                    .size(192.dp)
+                    .align(Alignment.CenterHorizontally),
+            )
+            HorizontalDivider()
             SettingsMenuItem(
                 icon = Icons.Filled.Tune,
                 title = "Preferences",
@@ -85,7 +104,10 @@ fun SettingsScreen(onOpen: (String) -> Unit) {
             Spacer(Modifier.weight(1f))
             AboutFooter(
                 version = BuildConfig.VERSION_NAME,
+                updateState = updateState,
+                onCheckForUpdates = { vm.checkForUpdates(BuildConfig.VERSION_NAME) },
                 onOpenGithub = { uriHandler.openUri(GITHUB_URL) },
+                onOpenUpdate = { url -> uriHandler.openUri(url) },
             )
         }
     }
@@ -94,36 +116,83 @@ fun SettingsScreen(onOpen: (String) -> Unit) {
 private const val GITHUB_URL = "https://github.com/Kvyii/Maelle"
 
 @Composable
-private fun AboutFooter(version: String, onOpenGithub: () -> Unit) {
+private fun AboutFooter(
+    version: String,
+    updateState: UpdateCheckState,
+    onCheckForUpdates: () -> Unit,
+    onOpenGithub: () -> Unit,
+    onOpenUpdate: (String) -> Unit,
+) {
     Column(
         Modifier
             .fillMaxWidth()
             .padding(vertical = 20.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
+        // Normalize to "v.x.x.x" (dotted, single leading "v.").
+        val display = "v." + version.trim().removePrefix("v").removePrefix("V")
         Text(
-            "Maelle v$version",
-            style = MaterialTheme.typography.bodyMedium,
+            display,
+            style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
-        Row(
-            Modifier
+
+        Text(
+            "GitHub",
+            style = MaterialTheme.typography.labelLarge,
+            color = MaterialTheme.colorScheme.primary,
+            textDecoration = TextDecoration.Underline,
+            modifier = Modifier
+                .padding(top = 6.dp)
                 .clickable(onClick = onOpenGithub)
-                .padding(top = 4.dp, start = 8.dp, end = 8.dp, bottom = 4.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Icon(
-                Icons.Filled.Code,
-                contentDescription = null,
-                modifier = Modifier.size(16.dp),
-                tint = MaterialTheme.colorScheme.primary,
-            )
-            Text(
-                "View on GitHub",
-                style = MaterialTheme.typography.labelLarge,
-                color = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.padding(start = 6.dp),
-            )
+                .padding(4.dp),
+        )
+
+        when (val s = updateState) {
+            UpdateCheckState.Checking ->
+                Row(
+                    Modifier.padding(top = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp)
+                    Text(
+                        "Checking…",
+                        style = MaterialTheme.typography.labelMedium,
+                        modifier = Modifier.padding(start = 8.dp),
+                    )
+                }
+
+            UpdateCheckState.UpToDate ->
+                Text(
+                    "You're up to date.",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 10.dp),
+                )
+
+            is UpdateCheckState.Available ->
+                TextButton(
+                    onClick = { onOpenUpdate(s.url) },
+                    modifier = Modifier.padding(top = 4.dp),
+                ) {
+                    Text("Update available: ${s.version} — download")
+                }
+
+            is UpdateCheckState.Error ->
+                Text(
+                    s.message,
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.padding(top = 10.dp),
+                )
+
+            UpdateCheckState.Idle ->
+                OutlinedButton(
+                    onClick = onCheckForUpdates,
+                    modifier = Modifier.padding(top = 10.dp),
+                ) {
+                    Text("Check for updates", fontWeight = FontWeight.Normal)
+                }
         }
     }
 }
