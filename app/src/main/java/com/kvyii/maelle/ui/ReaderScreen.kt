@@ -28,12 +28,14 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.core.text.HtmlCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.kvyii.maelle.AppContainer
+import com.kvyii.maelle.data.ReaderFont
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -48,6 +50,18 @@ fun ReaderScreen(
         key = "reader-$seriesId-$chapterId",
     )
     val state by vm.state.collectAsStateWithLifecycle()
+    val prefs by vm.preferences.collectAsStateWithLifecycle()
+
+    val fontFamily = when (prefs.font) {
+        ReaderFont.Sans -> FontFamily.SansSerif
+        ReaderFont.Serif -> FontFamily.Serif
+        ReaderFont.Mono -> FontFamily.Monospace
+    }
+    val bodyStyle = MaterialTheme.typography.bodyLarge.copy(
+        fontFamily = fontFamily,
+        fontSize = prefs.fontSize.sp,
+        lineHeight = (prefs.fontSize * 1.6f).sp,
+    )
 
     // The plain text the reader sees.
     val plainText = remember(state.html) {
@@ -86,7 +100,7 @@ fun ReaderScreen(
             else -> SelectionContainer {
                 Text(
                     text = plainText,
-                    style = MaterialTheme.typography.bodyLarge,
+                    style = bodyStyle,
                     modifier = Modifier
                         .fillMaxSize()
                         .padding(padding)

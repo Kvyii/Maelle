@@ -79,7 +79,16 @@ fun MaelleApp(container: AppContainer) {
                 })
             }
             composable(Tab.Settings.route) {
-                SettingsScreen(container)
+                SettingsScreen(onOpen = { route -> navController.navigate(route) })
+            }
+            composable("settings/preferences") {
+                PreferencesScreen(container, onBack = { navController.popBackStack() })
+            }
+            composable("settings/themes") {
+                ThemesScreen(container, onBack = { navController.popBackStack() })
+            }
+            composable("settings/assistant") {
+                AssistantSettingsScreen(container, onBack = { navController.popBackStack() })
             }
             composable("series/{seriesId}") { entry ->
                 val seriesId = entry.arguments?.getString("seriesId")?.toLongOrNull() ?: return@composable

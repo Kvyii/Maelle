@@ -73,14 +73,30 @@ interface ChapterDao {
     suspend fun setDownloadPath(id: Long, path: String?)
 
     /**
-     * Mark every chapter at or below [orderIndex] (older than the pressed one)
-     * as read. Powers the long-press "mark all below as read" gesture.
+     * Set read state for the pressed chapter and everything older (inclusive).
+     * "Below" in the newest-first list = smaller orderIndex.
      */
     @Query(
         "UPDATE chapters SET readAt = :readAt " +
-            "WHERE seriesId = :seriesId AND orderIndex <= :orderIndex AND readAt IS NULL"
+            "WHERE seriesId = :seriesId AND orderIndex <= :orderIndex"
     )
-    suspend fun markReadUpTo(seriesId: Long, orderIndex: Int, readAt: Long)
+    suspend fun setReadBelow(seriesId: Long, orderIndex: Int, readAt: Long?)
+
+    /**
+     * Set read state for the pressed chapter and everything newer (inclusive).
+     * "Above" in the newest-first list = larger orderIndex.
+     */
+    @Query(
+        "UPDATE chapters SET readAt = :readAt " +
+            "WHERE seriesId = :seriesId AND orderIndex >= :orderIndex"
+    )
+    suspend fun setReadAbove(seriesId: Long, orderIndex: Int, readAt: Long?)
+
+    @Query(
+        "SELECT * FROM chapters WHERE seriesId = :seriesId " +
+            "AND readAt IS NULL AND downloadPath IS NULL ORDER BY orderIndex ASC"
+    )
+    suspend fun getUnreadUndownloaded(seriesId: Long): List<ChapterEntity>
 
     @Query("UPDATE chapters SET readAt = :readAt WHERE seriesId = :seriesId")
     suspend fun markAllRead(seriesId: Long, readAt: Long?)

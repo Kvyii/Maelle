@@ -5,8 +5,10 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.kvyii.maelle.AppContainer
 import com.kvyii.maelle.core.SearchResponse
+import com.kvyii.maelle.data.AppTheme
 import com.kvyii.maelle.data.AssistantSettings
 import com.kvyii.maelle.data.Providers
+import com.kvyii.maelle.data.ReaderPreferences
 import com.kvyii.maelle.data.db.ChapterEntity
 import com.kvyii.maelle.data.db.SeriesEntity
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -65,16 +67,21 @@ class SearchViewModel(private val c: AppContainer) : ViewModel() {
         c.library.openSeries(result.apiName, result.url, addToLibrary)
 }
 
+data class DownloadProgress(val done: Int, val total: Int, val failed: List<String> = emptyList()) {
+    val finished: Boolean get() = done >= total
+}
+
 data class SeriesUiState(
     val series: SeriesEntity? = null,
     val chapters: List<ChapterEntity> = emptyList(),
     val readCount: Int = 0,
     val refreshing: Boolean = false,
+    val downloadProgress: DownloadProgress? = null,
 )
 
-@OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
 class SeriesViewModel(private val c: AppContainer, private val seriesId: Long) : ViewModel() {
     private val refreshing = MutableStateFlow(false)
+    private val downloadProgress = MutableStateFlow<DownloadProgress?>(null)
 
     val state: StateFlow<SeriesUiState> =
         combineSeries().stateIn(
@@ -86,9 +93,9 @@ class SeriesViewModel(private val c: AppContainer, private val seriesId: Long) :
         val chaptersFlow = c.library.observeChapters(seriesId)
         val readFlow = c.library.observeReadCount(seriesId)
         return kotlinx.coroutines.flow.combine(
-            seriesFlow, chaptersFlow, readFlow, refreshing
-        ) { series, chapters, read, isRefreshing ->
-            SeriesUiState(series, chapters, read, isRefreshing)
+            seriesFlow, chaptersFlow, readFlow, refreshing, downloadProgress
+        ) { series, chapters, read, isRefreshing, progress ->
+            SeriesUiState(series, chapters, read, isRefreshing, progress)
         }
     }
 
@@ -113,13 +120,41 @@ class SeriesViewModel(private val c: AppContainer, private val seriesId: Long) :
         viewModelScope.launch { c.library.setChapterRead(chapter.id, !chapter.isRead) }
     }
 
-    /** Long-press action: mark the pressed chapter and all older ones as read. */
-    fun markReadBelow(chapter: ChapterEntity) {
-        viewModelScope.launch { c.library.markReadUpTo(seriesId, chapter.orderIndex) }
+    /**
+     * Long-press action: set read state for the pressed chapter and everything
+     * below (older) or above (newer) it in the list — inclusive either way.
+     */
+    fun markRange(chapter: ChapterEntity, below: Boolean, read: Boolean) {
+        viewModelScope.launch {
+            c.library.markRange(seriesId, chapter.orderIndex, below, read)
+        }
     }
 
     fun downloadChapter(chapter: ChapterEntity) {
-        viewModelScope.launch { c.library.downloadChapter(chapter) }
+        viewModelScope.launch {
+            try {
+                c.library.downloadChapter(chapter)
+            } catch (_: Exception) {
+                // Chapter row keeps showing the un-downloaded icon; user can retry.
+            }
+        }
+    }
+
+    /** Download every unread chapter with per-chapter retry, reporting progress. */
+    fun downloadAllUnread() {
+        if (downloadProgress.value?.finished == false) return // already running
+        viewModelScope.launch {
+            downloadProgress.value = DownloadProgress(0, Int.MAX_VALUE)
+            val result = c.library.downloadAllUnread(seriesId) { done, total ->
+                downloadProgress.value = DownloadProgress(done, total)
+            }
+            downloadProgress.value =
+                DownloadProgress(result.total, result.total, result.failed)
+        }
+    }
+
+    fun dismissDownloadProgress() {
+        downloadProgress.value = null
     }
 }
 
@@ -129,8 +164,26 @@ class SettingsViewModel(private val c: AppContainer) : ViewModel() {
             viewModelScope, SharingStarted.WhileSubscribed(5000), AssistantSettings()
         )
 
+    val theme: StateFlow<AppTheme> =
+        c.settings.theme.stateIn(
+            viewModelScope, SharingStarted.WhileSubscribed(5000), AppTheme.System
+        )
+
+    val readerPreferences: StateFlow<ReaderPreferences> =
+        c.settings.readerPreferences.stateIn(
+            viewModelScope, SharingStarted.WhileSubscribed(5000), ReaderPreferences()
+        )
+
     fun save(settings: AssistantSettings) {
         viewModelScope.launch { c.settings.update(settings) }
+    }
+
+    fun setTheme(theme: AppTheme) {
+        viewModelScope.launch { c.settings.setTheme(theme) }
+    }
+
+    fun savePreferences(preferences: ReaderPreferences) {
+        viewModelScope.launch { c.settings.updateReaderPreferences(preferences) }
     }
 }
 
@@ -150,6 +203,11 @@ class ReaderViewModel(
 ) : ViewModel() {
     private val _state = MutableStateFlow(ReaderUiState())
     val state: StateFlow<ReaderUiState> = _state.asStateFlow()
+
+    val preferences: StateFlow<ReaderPreferences> =
+        c.settings.readerPreferences.stateIn(
+            viewModelScope, SharingStarted.WhileSubscribed(5000), ReaderPreferences()
+        )
 
     init {
         load()

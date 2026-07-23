@@ -1,5 +1,6 @@
 package com.kvyii.maelle.ui
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -54,7 +55,7 @@ fun SeriesScreen(
     )
     val state by vm.state.collectAsStateWithLifecycle()
     val series = state.series
-    var markDialogFor by remember { mutableStateOf<ChapterEntity?>(null) }
+    var markSheetFor by remember { mutableStateOf<ChapterEntity?>(null) }
 
     Scaffold(
         topBar = {
@@ -67,6 +68,9 @@ fun SeriesScreen(
                 },
                 actions = {
                     if (series != null) {
+                        IconButton(onClick = vm::downloadAllUnread) {
+                            Icon(Icons.Filled.Download, contentDescription = "Download all unread")
+                        }
                         IconButton(onClick = vm::toggleLibrary) {
                             if (series.inLibrary) {
                                 Icon(Icons.Filled.Star, contentDescription = "In library")
@@ -80,6 +84,11 @@ fun SeriesScreen(
         }
     ) { padding ->
         LazyColumn(Modifier.fillMaxSize().padding(padding)) {
+            state.downloadProgress?.let { progress ->
+                item {
+                    DownloadBanner(progress, onDismiss = vm::dismissDownloadProgress)
+                }
+            }
             item {
                 Column(Modifier.padding(16.dp)) {
                     series?.author?.let {
@@ -108,7 +117,7 @@ fun SeriesScreen(
                 ChapterRow(
                     chapter = chapter,
                     onClick = { onOpenChapter(chapter.id) },
-                    onLongClick = { markDialogFor = chapter },
+                    onLongClick = { markSheetFor = chapter },
                     onToggleRead = { vm.toggleRead(chapter) },
                     onDownload = { vm.downloadChapter(chapter) },
                 )
@@ -117,23 +126,116 @@ fun SeriesScreen(
         }
     }
 
-    markDialogFor?.let { chapter ->
-        androidx.compose.material3.AlertDialog(
-            onDismissRequest = { markDialogFor = null },
-            title = { Text("Mark as read") },
-            text = { Text("Mark \"${chapter.name}\" and all chapters below (older) as read?") },
-            confirmButton = {
-                androidx.compose.material3.TextButton(onClick = {
-                    vm.markReadBelow(chapter)
-                    markDialogFor = null
-                }) { Text("Mark all below") }
+    markSheetFor?.let { chapter ->
+        MarkRangeSheet(
+            chapter = chapter,
+            onAction = { below, read ->
+                vm.markRange(chapter, below = below, read = read)
+                markSheetFor = null
             },
-            dismissButton = {
-                androidx.compose.material3.TextButton(onClick = { markDialogFor = null }) {
-                    Text("Cancel")
-                }
-            },
+            onDismiss = { markSheetFor = null },
         )
+    }
+}
+
+/**
+ * Long-press sheet: pick a direction (this & below = older, this & above =
+ * newer) and a state (read/unread). Ranges always include the pressed chapter.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun MarkRangeSheet(
+    chapter: ChapterEntity,
+    onAction: (below: Boolean, read: Boolean) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    androidx.compose.material3.ModalBottomSheet(onDismissRequest = onDismiss) {
+        Column(Modifier.padding(bottom = 24.dp)) {
+            Text(
+                chapter.name,
+                style = MaterialTheme.typography.titleSmall,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp),
+            )
+            HorizontalDivider()
+            SheetAction("Mark this & all below as read", Icons.Filled.CheckCircle) {
+                onAction(true, true)
+            }
+            SheetAction("Mark this & all below as unread", Icons.Filled.RadioButtonUnchecked) {
+                onAction(true, false)
+            }
+            HorizontalDivider()
+            SheetAction("Mark this & all above as read", Icons.Filled.CheckCircle) {
+                onAction(false, true)
+            }
+            SheetAction("Mark this & all above as unread", Icons.Filled.RadioButtonUnchecked) {
+                onAction(false, false)
+            }
+        }
+    }
+}
+
+@Composable
+private fun SheetAction(
+    label: String,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    onClick: () -> Unit,
+) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(horizontal = 24.dp, vertical = 14.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(icon, contentDescription = null, modifier = Modifier.size(20.dp))
+        Text(label, modifier = Modifier.padding(start = 16.dp))
+    }
+}
+
+@Composable
+private fun DownloadBanner(progress: DownloadProgress, onDismiss: () -> Unit) {
+    Column(Modifier.fillMaxWidth().padding(16.dp)) {
+        when {
+            !progress.finished -> {
+                val total = if (progress.total == Int.MAX_VALUE) null else progress.total
+                Text(
+                    if (total == null) "Preparing downloads…"
+                    else "Downloading ${progress.done} / $total",
+                    style = MaterialTheme.typography.labelLarge,
+                )
+                if (total == null) {
+                    androidx.compose.material3.LinearProgressIndicator(
+                        modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                    )
+                } else {
+                    androidx.compose.material3.LinearProgressIndicator(
+                        progress = { progress.done.toFloat() / total.coerceAtLeast(1) },
+                        modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                    )
+                }
+            }
+
+            else -> Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        if (progress.total == 0) "Nothing to download — all unread chapters are saved."
+                        else "Downloaded ${progress.total - progress.failed.size} of ${progress.total} chapters.",
+                        style = MaterialTheme.typography.labelLarge,
+                    )
+                    if (progress.failed.isNotEmpty()) {
+                        Text(
+                            "Failed after retries: ${progress.failed.take(3).joinToString()}" +
+                                if (progress.failed.size > 3) " +${progress.failed.size - 3} more" else "",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.error,
+                        )
+                    }
+                }
+                androidx.compose.material3.TextButton(onClick = onDismiss) { Text("Dismiss") }
+            }
+        }
     }
 }
 

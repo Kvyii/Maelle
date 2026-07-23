@@ -11,16 +11,25 @@ import com.kvyii.maelle.data.db.ChapterEntity
 import com.kvyii.maelle.data.db.MaelleDatabase
 import com.kvyii.maelle.data.db.SeriesEntity
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
 import java.io.File
 
 /** Single entry point the UI uses for search, library, chapters, and downloads. */
-class LibraryRepository(context: Context) {
+class LibraryRepository(context: Context, private val settings: SettingsRepository) {
     private val db = MaelleDatabase.get(context)
     private val seriesDao = db.seriesDao()
     private val chapterDao = db.chapterDao()
-    private val downloadsDir = File(context.filesDir, "chapters").apply { mkdirs() }
+    private val internalDownloadsDir = File(context.filesDir, "chapters")
+
+    /** Resolve the configured download directory, falling back to internal storage. */
+    private suspend fun downloadsDir(): File {
+        val custom = settings.readerPreferences.first().downloadPath
+        val dir = if (custom.isBlank()) internalDownloadsDir else File(custom)
+        return if (dir.mkdirs() || dir.isDirectory) dir else internalDownloadsDir.apply { mkdirs() }
+    }
 
     fun observeLibrary(): Flow<List<SeriesEntity>> = seriesDao.observeLibrary()
     fun observeSeries(id: Long): Flow<SeriesEntity?> = seriesDao.observeSeries(id)
@@ -66,9 +75,18 @@ class LibraryRepository(context: Context) {
     suspend fun setChapterRead(chapterId: Long, read: Boolean) =
         chapterDao.setRead(chapterId, if (read) System.currentTimeMillis() else null)
 
-    /** Mark the long-pressed chapter and everything older than it as read. */
-    suspend fun markReadUpTo(seriesId: Long, orderIndex: Int) =
-        chapterDao.markReadUpTo(seriesId, orderIndex, System.currentTimeMillis())
+    /**
+     * Set read state for the pressed chapter plus all older ([below]=true) or
+     * all newer ([below]=false) chapters — always inclusive of the pressed one.
+     */
+    suspend fun markRange(seriesId: Long, orderIndex: Int, below: Boolean, read: Boolean) {
+        val readAt = if (read) System.currentTimeMillis() else null
+        if (below) {
+            chapterDao.setReadBelow(seriesId, orderIndex, readAt)
+        } else {
+            chapterDao.setReadAbove(seriesId, orderIndex, readAt)
+        }
+    }
 
     suspend fun markAllRead(seriesId: Long, read: Boolean) =
         chapterDao.markAllRead(seriesId, if (read) System.currentTimeMillis() else null)
@@ -90,10 +108,41 @@ class LibraryRepository(context: Context) {
         val raw = api.loadHtml(chapter.url) ?: error("No content for ${chapter.url}")
         val cleaned = stripHtml(raw, chapter.name, chapter.orderIndex, stripAuthorNotes = true)
 
-        val file = File(downloadsDir, "${chapter.seriesId}_${chapter.id}.html")
+        val file = File(downloadsDir(), "${chapter.seriesId}_${chapter.id}.html")
         file.writeText(cleaned)
         chapterDao.setDownloadPath(chapter.id, file.absolutePath)
         cleaned
+    }
+
+    data class BatchDownloadResult(val total: Int, val failed: List<String>)
+
+    /**
+     * Download every unread, not-yet-downloaded chapter of a series, oldest
+     * first. Each chapter gets [attemptsPerChapter] tries with backoff before
+     * being reported as failed; one bad chapter never aborts the batch.
+     */
+    suspend fun downloadAllUnread(
+        seriesId: Long,
+        attemptsPerChapter: Int = 3,
+        onProgress: (done: Int, total: Int) -> Unit = { _, _ -> },
+    ): BatchDownloadResult = withContext(Dispatchers.IO) {
+        val pending = chapterDao.getUnreadUndownloaded(seriesId)
+        val failed = mutableListOf<String>()
+        pending.forEachIndexed { index, chapter ->
+            var succeeded = false
+            for (attempt in 1..attemptsPerChapter) {
+                try {
+                    downloadChapter(chapter)
+                    succeeded = true
+                    break
+                } catch (e: Exception) {
+                    if (attempt < attemptsPerChapter) delay(1000L * attempt)
+                }
+            }
+            if (!succeeded) failed += chapter.name
+            onProgress(index + 1, pending.size)
+        }
+        BatchDownloadResult(pending.size, failed)
     }
 
     suspend fun undownloadChapter(chapterId: Long) = withContext(Dispatchers.IO) {

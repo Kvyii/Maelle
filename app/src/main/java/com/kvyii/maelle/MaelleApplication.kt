@@ -17,7 +17,7 @@ class MaelleApplication : Application() {
 
 /** Minimal manual DI — a rewrite this size doesn't need Hilt. */
 class AppContainer(app: MaelleApplication) {
-    val library = LibraryRepository(app)
     val settings = SettingsRepository(app)
+    val library = LibraryRepository(app, settings)
     val assistant = OpenRouterClient()
 }
