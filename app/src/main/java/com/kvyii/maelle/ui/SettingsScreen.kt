@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
@@ -14,6 +15,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.Button
@@ -38,11 +40,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.kvyii.maelle.AppContainer
+import com.kvyii.maelle.BuildConfig
 import com.kvyii.maelle.data.AppTheme
 import com.kvyii.maelle.data.AssistantSettings
 import com.kvyii.maelle.data.ReaderFont
@@ -52,6 +56,8 @@ import com.kvyii.maelle.data.ReaderPreferences
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(onOpen: (String) -> Unit) {
+    val uriHandler = LocalUriHandler.current
+
     Scaffold(topBar = { TopAppBar(title = { Text("Settings") }) }) { padding ->
         Column(Modifier.fillMaxSize().padding(padding)) {
             SettingsMenuItem(
@@ -75,6 +81,49 @@ fun SettingsScreen(onOpen: (String) -> Unit) {
                 onClick = { onOpen("settings/assistant") },
             )
             HorizontalDivider()
+
+            Spacer(Modifier.weight(1f))
+            AboutFooter(
+                version = BuildConfig.VERSION_NAME,
+                onOpenGithub = { uriHandler.openUri(GITHUB_URL) },
+            )
+        }
+    }
+}
+
+private const val GITHUB_URL = "https://github.com/Kvyii/Maelle"
+
+@Composable
+private fun AboutFooter(version: String, onOpenGithub: () -> Unit) {
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .padding(vertical = 20.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Text(
+            "Maelle v$version",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Row(
+            Modifier
+                .clickable(onClick = onOpenGithub)
+                .padding(top = 4.dp, start = 8.dp, end = 8.dp, bottom = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(
+                Icons.Filled.Code,
+                contentDescription = null,
+                modifier = Modifier.size(16.dp),
+                tint = MaterialTheme.colorScheme.primary,
+            )
+            Text(
+                "View on GitHub",
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.padding(start = 6.dp),
+            )
         }
     }
 }
