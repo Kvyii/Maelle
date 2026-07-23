@@ -2,25 +2,30 @@ package com.kvyii.maelle.ui
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Download
-import androidx.compose.material.icons.filled.DownloadDone
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.RadioButtonUnchecked
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.outlined.StarBorder
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -36,11 +41,13 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import coil3.compose.AsyncImage
 import com.kvyii.maelle.AppContainer
 import com.kvyii.maelle.data.db.ChapterEntity
 
@@ -59,6 +66,8 @@ fun SeriesScreen(
     val state by vm.state.collectAsStateWithLifecycle()
     val series = state.series
     var markSheetFor by remember { mutableStateOf<ChapterEntity?>(null) }
+    var downloadMenuOpen by remember { mutableStateOf(false) }
+    var synopsisExpanded by remember { mutableStateOf(false) }
 
     Scaffold(
         topBar = {
@@ -71,8 +80,31 @@ fun SeriesScreen(
                 },
                 actions = {
                     if (series != null) {
-                        IconButton(onClick = vm::downloadAllUnread) {
-                            Icon(Icons.Filled.Download, contentDescription = "Download all unread")
+                        Box {
+                            IconButton(onClick = { downloadMenuOpen = true }) {
+                                Icon(Icons.Filled.Download, contentDescription = "Download options")
+                            }
+                            DropdownMenu(
+                                expanded = downloadMenuOpen,
+                                onDismissRequest = { downloadMenuOpen = false },
+                            ) {
+                                DropdownMenuItem(
+                                    text = { Text("Download next 5") },
+                                    onClick = { vm.downloadUnread(5); downloadMenuOpen = false },
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("Download next 10") },
+                                    onClick = { vm.downloadUnread(10); downloadMenuOpen = false },
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("Download next 25") },
+                                    onClick = { vm.downloadUnread(25); downloadMenuOpen = false },
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("Download all unread") },
+                                    onClick = { vm.downloadUnread(null); downloadMenuOpen = false },
+                                )
+                            }
                         }
                         IconButton(onClick = vm::toggleLibrary) {
                             if (series.inLibrary) {
@@ -99,22 +131,52 @@ fun SeriesScreen(
                 }
             }
             item {
-                Column(Modifier.padding(16.dp)) {
+                Column(
+                    Modifier.padding(16.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
+                    series?.posterUrl?.let { poster ->
+                        AsyncImage(
+                            model = poster,
+                            contentDescription = series.name,
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier
+                                .width(150.dp)
+                                .aspectRatio(0.7f)
+                                .clip(RoundedCornerShape(12.dp)),
+                        )
+                    }
                     series?.author?.let {
-                        Text("by $it", style = MaterialTheme.typography.bodyMedium)
+                        Text(
+                            "by $it",
+                            style = MaterialTheme.typography.bodyMedium,
+                            modifier = Modifier.padding(top = 12.dp),
+                        )
                     }
                     Text(
                         "${state.chapters.size} chapters · ${state.readCount} read",
                         style = MaterialTheme.typography.labelMedium,
                         modifier = Modifier.padding(top = 4.dp),
                     )
+                    series?.apiName?.let {
+                        Text(
+                            "from $it",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(top = 2.dp),
+                        )
+                    }
                     series?.synopsis?.let {
+                        // Tap to expand the full synopsis, tap again to collapse.
                         Text(
                             it,
                             style = MaterialTheme.typography.bodySmall,
-                            maxLines = 6,
+                            maxLines = if (synopsisExpanded) Int.MAX_VALUE else 6,
                             overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.padding(top = 8.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(top = 12.dp)
+                                .clickable { synopsisExpanded = !synopsisExpanded },
                         )
                     }
                 }
@@ -127,7 +189,6 @@ fun SeriesScreen(
                     chapter = chapter,
                     onClick = { onOpenChapter(chapter.id) },
                     onLongClick = { markSheetFor = chapter },
-                    onToggleRead = { vm.toggleRead(chapter) },
                     onDownload = { vm.downloadChapter(chapter) },
                 )
                 HorizontalDivider()
@@ -279,7 +340,6 @@ private fun ChapterRow(
     chapter: ChapterEntity,
     onClick: () -> Unit,
     onLongClick: () -> Unit,
-    onToggleRead: () -> Unit,
     onDownload: () -> Unit,
 ) {
     Row(
@@ -301,22 +361,22 @@ private fun ChapterRow(
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
-            chapter.dateOfRelease?.let {
-                Text(it, style = MaterialTheme.typography.labelSmall)
+            RelativeTime.format(chapter.dateOfRelease)?.let {
+                Text(
+                    it,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
         }
+        // A single trailing icon: a filled tick once downloaded, otherwise a
+        // download affordance. Read/unread is conveyed by the greyed title, and
+        // toggled via long-press — no separate read tick.
         IconButton(onClick = onDownload) {
             if (chapter.isDownloaded) {
-                Icon(Icons.Filled.DownloadDone, contentDescription = "Downloaded", tint = MaterialTheme.colorScheme.primary)
+                Icon(Icons.Filled.CheckCircle, contentDescription = "Downloaded", tint = MaterialTheme.colorScheme.primary)
             } else {
                 Icon(Icons.Filled.Download, contentDescription = "Download")
-            }
-        }
-        IconButton(onClick = onToggleRead) {
-            if (chapter.isRead) {
-                Icon(Icons.Filled.CheckCircle, contentDescription = "Read", tint = MaterialTheme.colorScheme.primary)
-            } else {
-                Icon(Icons.Filled.RadioButtonUnchecked, contentDescription = "Unread")
             }
         }
     }

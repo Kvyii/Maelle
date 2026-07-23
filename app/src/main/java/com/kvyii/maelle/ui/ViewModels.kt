@@ -10,6 +10,7 @@ import com.kvyii.maelle.data.AssistantSettings
 import com.kvyii.maelle.data.Providers
 import com.kvyii.maelle.data.ReaderPreferences
 import com.kvyii.maelle.data.SeriesDownload
+import com.kvyii.maelle.data.UpdateResult
 import com.kvyii.maelle.data.db.SeriesDownloadCount
 import com.kvyii.maelle.data.db.ChapterEntity
 import com.kvyii.maelle.data.db.SeriesEntity
@@ -176,7 +177,7 @@ class SeriesViewModel(private val c: AppContainer, private val seriesId: Long) :
         }
     }
 
-    fun downloadAllUnread() = c.downloads.start(seriesId)
+    fun downloadUnread(limit: Int? = null) = c.downloads.start(seriesId, limit)
     fun pauseDownload() = c.downloads.pause(seriesId)
     fun resumeDownload() = c.downloads.resume(seriesId)
     fun stopDownload() = c.downloads.stop(seriesId)
@@ -233,13 +234,52 @@ class SettingsViewModel(private val c: AppContainer) : ViewModel() {
     fun savePreferences(preferences: ReaderPreferences) {
         viewModelScope.launch { c.settings.updateReaderPreferences(preferences) }
     }
+
+    private val _updateState = MutableStateFlow<UpdateCheckState>(UpdateCheckState.Idle)
+    val updateState: StateFlow<UpdateCheckState> = _updateState.asStateFlow()
+
+    fun checkForUpdates(currentVersion: String) {
+        if (_updateState.value is UpdateCheckState.Checking) return
+        _updateState.value = UpdateCheckState.Checking
+        viewModelScope.launch {
+            _updateState.value = when (val result = c.updateChecker.check(currentVersion)) {
+                is UpdateResult.Available -> UpdateCheckState.Available(result.version, result.url)
+                UpdateResult.UpToDate -> UpdateCheckState.UpToDate
+                is UpdateResult.Error -> UpdateCheckState.Error(result.message)
+            }
+        }
+    }
+
+    fun dismissUpdateResult() {
+        _updateState.value = UpdateCheckState.Idle
+    }
 }
 
+sealed interface UpdateCheckState {
+    object Idle : UpdateCheckState
+    object Checking : UpdateCheckState
+    object UpToDate : UpdateCheckState
+    data class Available(val version: String, val url: String) : UpdateCheckState
+    data class Error(val message: String) : UpdateCheckState
+}
+
+/** One chapter loaded into the continuous reader. */
+data class LoadedChapter(
+    val id: Long,
+    val name: String,
+    val body: String,
+)
+
 data class ReaderUiState(
-    val chapterName: String = "",
-    val html: String = "",
+    /** Chapters currently in the scroll, in reading order (oldest → newest). */
+    val loaded: List<LoadedChapter> = emptyList(),
+    val title: String = "",
     val loading: Boolean = true,
     val error: String? = null,
+    val appending: Boolean = false,
+    val prepending: Boolean = false,
+    /** True once the final chapter of the series is loaded at the bottom. */
+    val atLastChapter: Boolean = false,
     val explanation: String? = null,
     val explaining: Boolean = false,
 )
@@ -247,7 +287,7 @@ data class ReaderUiState(
 class ReaderViewModel(
     private val c: AppContainer,
     private val seriesId: Long,
-    private val chapterId: Long,
+    private val initialChapterId: Long,
 ) : ViewModel() {
     private val _state = MutableStateFlow(ReaderUiState())
     val state: StateFlow<ReaderUiState> = _state.asStateFlow()
@@ -257,21 +297,90 @@ class ReaderViewModel(
             viewModelScope, SharingStarted.WhileSubscribed(5000), ReaderPreferences()
         )
 
-    init {
-        load()
-    }
+    // Full ordered list (oldest → newest); [firstIndex]..[lastIndex] are loaded.
+    private var chapters: List<ChapterEntity> = emptyList()
+    private var firstIndex = -1
+    private var lastIndex = -1
 
-    private fun load() {
+    init {
         viewModelScope.launch {
+            chapters = c.library.orderedChapters(seriesId)
+            val start = chapters.indexOfFirst { it.id == initialChapterId }.let { if (it < 0) 0 else it }
+            firstIndex = start
+            lastIndex = start
+            val chapter = chapters.getOrNull(start)
+            if (chapter == null) {
+                _state.value = _state.value.copy(loading = false, error = "Chapter not found")
+                return@launch
+            }
             try {
-                val text = c.library.chapterText(chapterId)
-                _state.value = _state.value.copy(html = text, loading = false)
-                c.library.setChapterRead(chapterId, true)
-                c.library.setLastReadChapter(seriesId, chapterId)
+                val body = c.library.chapterText(chapter.id)
+                _state.value = _state.value.copy(
+                    loaded = listOf(LoadedChapter(chapter.id, chapter.name, body)),
+                    title = chapter.name,
+                    loading = false,
+                    atLastChapter = lastIndex >= chapters.lastIndex,
+                )
+                c.library.setLastReadChapter(seriesId, chapter.id)
             } catch (e: Exception) {
                 _state.value = _state.value.copy(loading = false, error = e.message ?: "Failed to load")
             }
         }
+    }
+
+    /** Append the next chapter to the bottom of the scroll (call when near the end). */
+    fun loadNext() {
+        if (_state.value.appending || lastIndex >= chapters.lastIndex || lastIndex < 0) return
+        _state.value = _state.value.copy(appending = true)
+        viewModelScope.launch {
+            val next = chapters[lastIndex + 1]
+            val body = runCatching { c.library.chapterText(next.id) }.getOrNull()
+            if (body != null) {
+                lastIndex++
+                _state.value = _state.value.copy(
+                    loaded = _state.value.loaded + LoadedChapter(next.id, next.name, body),
+                    appending = false,
+                    atLastChapter = lastIndex >= chapters.lastIndex,
+                )
+            } else {
+                _state.value = _state.value.copy(appending = false)
+            }
+        }
+    }
+
+    /** Prepend the previous chapter to the top of the scroll (call when near the top). */
+    fun loadPrevious() {
+        if (_state.value.prepending || firstIndex <= 0) return
+        _state.value = _state.value.copy(prepending = true)
+        viewModelScope.launch {
+            val prev = chapters[firstIndex - 1]
+            val body = runCatching { c.library.chapterText(prev.id) }.getOrNull()
+            if (body != null) {
+                firstIndex--
+                _state.value = _state.value.copy(
+                    loaded = listOf(LoadedChapter(prev.id, prev.name, body)) + _state.value.loaded,
+                    prepending = false,
+                )
+            } else {
+                _state.value = _state.value.copy(prepending = false)
+            }
+        }
+    }
+
+    /** The chapter whose heading is currently at the top of the viewport. */
+    fun onChapterVisible(chapterId: Long) {
+        val chapter = _state.value.loaded.firstOrNull { it.id == chapterId } ?: return
+        if (_state.value.title != chapter.name) {
+            _state.value = _state.value.copy(title = chapter.name)
+        }
+        // Track reading position, but do NOT mark read yet — that happens only
+        // once the reader scrolls to the bottom of the chapter.
+        viewModelScope.launch { c.library.setLastReadChapter(seriesId, chapterId) }
+    }
+
+    /** Called when the reader has scrolled to the end of a chapter's body. */
+    fun onChapterFinished(chapterId: Long) {
+        viewModelScope.launch { c.library.setChapterRead(chapterId, true) }
     }
 
     fun explain(selected: String, paragraph: String) {

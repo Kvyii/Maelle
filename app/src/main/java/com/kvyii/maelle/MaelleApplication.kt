@@ -5,6 +5,7 @@ import com.kvyii.maelle.assistant.OpenRouterClient
 import com.kvyii.maelle.data.DownloadManager
 import com.kvyii.maelle.data.LibraryRepository
 import com.kvyii.maelle.data.SettingsRepository
+import com.kvyii.maelle.data.UpdateChecker
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -25,6 +26,7 @@ class AppContainer(app: MaelleApplication) {
 
     val settings = SettingsRepository(app)
     val library = LibraryRepository(app, settings)
-    val downloads = DownloadManager(library, appScope)
+    val downloads = DownloadManager(app, library, appScope)
     val assistant = OpenRouterClient()
+    val updateChecker = UpdateChecker()
 }

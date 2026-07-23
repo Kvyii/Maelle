@@ -51,10 +51,10 @@ private val ClaireColors = lightColorScheme(
     onSurfaceVariant = Color(0xFF4A4458),
 )
 
-/** "Obscur" — pure-black OLED with hacker violet and teal highlights. */
+/** "Obscur" — pure-black OLED with hacker magenta and teal highlights. */
 private val ObscurColors = darkColorScheme(
-    primary = Color(0xFF9D6BFF),
-    onPrimary = Color(0xFF120A24),
+    primary = Color(0xFFFF50FF),
+    onPrimary = Color(0xFF20002A),
     secondary = Color(0xFF00E5C7),
     onSecondary = Color(0xFF00201B),
     tertiary = Color(0xFF00E5C7),

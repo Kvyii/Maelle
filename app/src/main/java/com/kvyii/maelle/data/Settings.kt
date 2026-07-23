@@ -11,7 +11,7 @@ import kotlinx.coroutines.flow.map
 
 val Context.dataStore by preferencesDataStore(name = "settings")
 
-const val DEFAULT_ASSISTANT_MODEL = "google/gemini-2.0-flash-001"
+const val DEFAULT_ASSISTANT_MODEL = "google/gemini-3-flash-preview"
 const val DEFAULT_ASSISTANT_PROMPT =
     "Explain this concisely for a reader who is unfamiliar with it. " +
         "If it is a word or phrase in another language, translate it and give brief context."

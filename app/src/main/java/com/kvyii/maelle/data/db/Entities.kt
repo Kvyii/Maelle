@@ -26,6 +26,8 @@ data class SeriesEntity(
     val addedAt: Long = System.currentTimeMillis(),
     val lastCheckedAt: Long = 0,
     val lastReadChapterId: Long? = null,
+    /** When the user last opened a chapter of this series; drives library order. */
+    val lastReadAt: Long = 0,
 )
 
 /**
