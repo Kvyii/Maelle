@@ -4,11 +4,13 @@
 .idea/
 .DS_Store
 build/
+/app/release/
 /captures
 .externalNativeBuild
 .cxx/
 *.apk
 *.keystore
+/key_store
 output-metadata.json
 .kotlin/
 gradle/gradle-daemon-jvm.properties
