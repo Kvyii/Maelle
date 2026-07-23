@@ -5,6 +5,7 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
@@ -21,6 +22,9 @@ import com.kvyii.maelle.ui.MaelleApp
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
+        // Must be called before super.onCreate; swaps the splash theme out for
+        // the app theme once the first frame is ready.
+        installSplashScreen()
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
         val container = (application as MaelleApplication).container
