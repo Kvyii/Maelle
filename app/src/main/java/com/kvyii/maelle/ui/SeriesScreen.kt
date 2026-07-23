@@ -24,6 +24,7 @@ import androidx.compose.material.icons.filled.RadioButtonUnchecked
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.outlined.StarBorder
+import androidx.compose.material3.Button
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -178,6 +179,30 @@ fun SeriesScreen(
                                 .padding(top = 12.dp)
                                 .clickable { synopsisExpanded = !synopsisExpanded },
                         )
+                    }
+                    // Resume picks up at the start of the most recently opened chapter
+                    // (not the last *finished* one), so returning to the reader never
+                    // requires scrolling back to find your spot.
+                    val resumeChapter = state.chapters.firstOrNull { it.id == series?.lastReadChapterId }
+                        ?: state.chapters.lastOrNull()
+                    resumeChapter?.let { chapter ->
+                        Button(
+                            onClick = { onOpenChapter(chapter.id) },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(top = 16.dp),
+                        ) {
+                            Icon(
+                                Icons.Filled.PlayArrow,
+                                contentDescription = null,
+                                modifier = Modifier.size(18.dp),
+                            )
+                            Text(
+                                "  Resume · ${chapter.name}",
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
                     }
                 }
                 HorizontalDivider()

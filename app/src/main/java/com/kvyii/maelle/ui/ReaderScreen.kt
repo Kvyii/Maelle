@@ -42,8 +42,10 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
+import androidx.compose.foundation.background
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontFamily
@@ -58,6 +60,12 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.kvyii.maelle.AppContainer
 import com.kvyii.maelle.data.ReaderFont
+
+/** True OLED black — the reading page ignores the app theme and always uses this. */
+private val ReaderBackground = Color.Black
+
+/** Slightly off-white so long reading sessions on pure black don't strain the eyes. */
+private val ReaderTextColor = Color(0xFFE6E6E6)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -84,7 +92,7 @@ fun ReaderScreen(
         ReaderFont.Serif -> FontFamily.Serif
         ReaderFont.Mono -> FontFamily.Monospace
     }
-    val textColor = MaterialTheme.colorScheme.onSurface.toArgb()
+    val textColor = ReaderTextColor.toArgb()
 
     val listState = rememberLazyListState()
     val sheetState = rememberModalBottomSheetState()
@@ -149,7 +157,8 @@ fun ReaderScreen(
         }
     }
 
-    Box(Modifier.fillMaxSize()) {
+    // The reading page is always pure OLED black, independent of the app theme.
+    Box(Modifier.fillMaxSize().background(ReaderBackground)) {
         when {
             state.loading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 CircularProgressIndicator()
@@ -180,7 +189,10 @@ fun ReaderScreen(
                         // A thin divider separates one chapter from the next.
                         if (i > 0) {
                             item(key = "divider-${chapter.id}") {
-                                HorizontalDivider(Modifier.padding(vertical = 20.dp))
+                                HorizontalDivider(
+                                    Modifier.padding(vertical = 20.dp),
+                                    color = ReaderTextColor.copy(alpha = 0.2f),
+                                )
                             }
                         }
 
@@ -191,6 +203,7 @@ fun ReaderScreen(
                                     fontFamily = composeFont,
                                     fontWeight = FontWeight.Bold,
                                 ),
+                                color = ReaderTextColor,
                                 textAlign = TextAlign.Center,
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -217,11 +230,14 @@ fun ReaderScreen(
                     } else if (state.atLastChapter && state.loaded.isNotEmpty()) {
                         item(key = "end-of-series") {
                             Column(Modifier.fillMaxWidth()) {
-                                HorizontalDivider(Modifier.padding(top = 20.dp))
+                                HorizontalDivider(
+                                    Modifier.padding(top = 20.dp),
+                                    color = ReaderTextColor.copy(alpha = 0.2f),
+                                )
                                 Text(
                                     "No further chapters",
                                     style = MaterialTheme.typography.bodyMedium,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    color = ReaderTextColor.copy(alpha = 0.6f),
                                     textAlign = TextAlign.Center,
                                     modifier = Modifier
                                         .fillMaxWidth()
