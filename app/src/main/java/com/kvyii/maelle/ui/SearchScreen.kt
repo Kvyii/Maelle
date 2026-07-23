@@ -96,7 +96,26 @@ fun SearchScreen(container: AppContainer, onOpenSeries: (Long) -> Unit) {
                     Text("Error: ${state.error}", color = MaterialTheme.colorScheme.error)
                 }
 
+                state.results.isEmpty() && state.showingPopular ->
+                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        Text(
+                            "Type above to search ${state.provider}.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+
                 else -> LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    if (state.showingPopular) {
+                        item {
+                            Text(
+                                "Popular on ${state.provider}",
+                                style = MaterialTheme.typography.titleSmall,
+                                color = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.padding(vertical = 4.dp),
+                            )
+                        }
+                    }
                     items(state.results, key = { it.url }) { result ->
                         SearchResultRow(
                             result = result,

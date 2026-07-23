@@ -42,6 +42,24 @@ class LibraryRepository(context: Context, private val settings: SettingsReposito
             Providers.byName(providerName)?.search(query).orEmpty()
         }
 
+    fun providerHasMainPage(providerName: String): Boolean =
+        Providers.byName(providerName)?.hasMainPage == true
+
+    /**
+     * The provider's "popular"/browse list — its main page, first page. Empty
+     * if the provider has no main page or the fetch fails.
+     */
+    suspend fun popular(providerName: String): List<SearchResponse> =
+        withContext(Dispatchers.IO) {
+            val api = Providers.byName(providerName) ?: return@withContext emptyList()
+            if (!api.hasMainPage) return@withContext emptyList()
+            try {
+                api.loadMainPage(page = 1, mainCategory = null, orderBy = null, tag = null).list
+            } catch (_: Exception) {
+                emptyList()
+            }
+        }
+
     /**
      * Load a series from its provider, upsert it and its chapters into the DB,
      * and return the local series id. [addToLibrary] controls the library flag.

@@ -14,6 +14,8 @@ data class SeriesDownloadCount(
     val name: String,
     val downloaded: Int,
     val total: Int,
+    /** Name of the newest (highest-order) chapter that has been downloaded. */
+    val lastDownloadedChapter: String?,
 )
 
 @Dao
@@ -110,7 +112,9 @@ interface ChapterDao {
     @Query(
         "SELECT s.id AS seriesId, s.name AS name, " +
             "SUM(CASE WHEN c.downloadPath IS NOT NULL THEN 1 ELSE 0 END) AS downloaded, " +
-            "COUNT(c.id) AS total " +
+            "COUNT(c.id) AS total, " +
+            "(SELECT d.name FROM chapters d WHERE d.seriesId = s.id AND d.downloadPath IS NOT NULL " +
+            "ORDER BY d.orderIndex DESC LIMIT 1) AS lastDownloadedChapter " +
             "FROM series s JOIN chapters c ON c.seriesId = s.id " +
             "GROUP BY s.id HAVING downloaded > 0 ORDER BY s.name COLLATE NOCASE"
     )

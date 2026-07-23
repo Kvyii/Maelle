@@ -34,6 +34,8 @@ data class SearchUiState(
     val loading: Boolean = false,
     val results: List<SearchResponse> = emptyList(),
     val error: String? = null,
+    /** True when [results] is the provider's popular list, not a search result. */
+    val showingPopular: Boolean = false,
 )
 
 class SearchViewModel(private val c: AppContainer) : ViewModel() {
@@ -42,22 +44,58 @@ class SearchViewModel(private val c: AppContainer) : ViewModel() {
     private val _state = MutableStateFlow(SearchUiState())
     val state: StateFlow<SearchUiState> = _state.asStateFlow()
 
+    private var loadJob: kotlinx.coroutines.Job? = null
+
+    init {
+        loadPopular()
+    }
+
     fun setProvider(name: String) {
-        _state.value = _state.value.copy(provider = name, results = emptyList(), error = null)
+        _state.value = _state.value.copy(
+            provider = name, query = "", results = emptyList(), error = null,
+        )
+        loadPopular()
     }
 
     fun setQuery(q: String) {
         _state.value = _state.value.copy(query = q)
+        // Clearing the field returns to the popular list.
+        if (q.isBlank() && !_state.value.showingPopular) loadPopular()
+    }
+
+    /** Load the current provider's popular/browse list (its main page). */
+    fun loadPopular() {
+        val provider = _state.value.provider
+        loadJob?.cancel()
+        if (!c.library.providerHasMainPage(provider)) {
+            _state.value = _state.value.copy(
+                loading = false, results = emptyList(), error = null, showingPopular = true,
+            )
+            return
+        }
+        _state.value = _state.value.copy(loading = true, error = null, showingPopular = true)
+        loadJob = viewModelScope.launch {
+            try {
+                val results = c.library.popular(provider)
+                _state.value = _state.value.copy(loading = false, results = results, showingPopular = true)
+            } catch (e: Exception) {
+                _state.value = _state.value.copy(loading = false, error = e.message ?: "Failed to load")
+            }
+        }
     }
 
     fun search() {
         val s = _state.value
-        if (s.query.isBlank()) return
-        _state.value = s.copy(loading = true, error = null)
-        viewModelScope.launch {
+        if (s.query.isBlank()) {
+            loadPopular()
+            return
+        }
+        loadJob?.cancel()
+        _state.value = s.copy(loading = true, error = null, showingPopular = false)
+        loadJob = viewModelScope.launch {
             try {
                 val results = c.library.search(s.provider, s.query)
-                _state.value = _state.value.copy(loading = false, results = results)
+                _state.value = _state.value.copy(loading = false, results = results, showingPopular = false)
             } catch (e: Exception) {
                 _state.value = _state.value.copy(loading = false, error = e.message ?: "Search failed")
             }

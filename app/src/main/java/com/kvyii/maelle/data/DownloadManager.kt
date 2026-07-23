@@ -21,6 +21,8 @@ data class SeriesDownload(
     val total: Int? = null,
     val failed: List<String> = emptyList(),
     val status: DownloadStatus = DownloadStatus.Running,
+    /** Chapter currently being fetched (or last fetched), for display. */
+    val currentChapter: String? = null,
 ) {
     val active: Boolean get() = status == DownloadStatus.Running || status == DownloadStatus.Paused
 }
@@ -57,6 +59,7 @@ class DownloadManager(
 
                 pending.forEachIndexed { index, chapter ->
                     pauseFlag.first { paused -> !paused } // wait while paused
+                    set(seriesId) { it?.copy(currentChapter = chapter.name) }
 
                     var succeeded = false
                     for (attempt in 1..ATTEMPTS_PER_CHAPTER) {
