@@ -4,10 +4,12 @@ import android.content.Context
 import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
+import androidx.room.migration.Migration
+import androidx.sqlite.db.SupportSQLiteDatabase
 
 @Database(
     entities = [SeriesEntity::class, ChapterEntity::class],
-    version = 2,
+    version = 3,
     exportSchema = false,
 )
 abstract class MaelleDatabase : RoomDatabase() {
@@ -18,13 +20,23 @@ abstract class MaelleDatabase : RoomDatabase() {
         @Volatile
         private var instance: MaelleDatabase? = null
 
+        private val MIGRATION_2_3 = object : Migration(2, 3) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "ALTER TABLE series ADD COLUMN lastReadScrollOffset INTEGER NOT NULL DEFAULT 0"
+                )
+            }
+        }
+
         fun get(context: Context): MaelleDatabase =
             instance ?: synchronized(this) {
                 instance ?: Room.databaseBuilder(
                     context.applicationContext,
                     MaelleDatabase::class.java,
                     "maelle.db",
-                ).fallbackToDestructiveMigration(dropAllTables = true).build().also { instance = it }
+                ).addMigrations(MIGRATION_2_3)
+                    .fallbackToDestructiveMigration(dropAllTables = true)
+                    .build().also { instance = it }
             }
     }
 }

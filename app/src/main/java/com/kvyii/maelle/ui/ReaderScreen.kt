@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -56,6 +57,8 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.collectLatest
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.kvyii.maelle.AppContainer
@@ -117,12 +120,50 @@ fun ReaderScreen(
         }
     }
 
-    // Keep the top-bar title in sync with whichever chapter heading is on top.
-    LaunchedEffect(listState, state.loaded) {
-        snapshotFlow { listState.firstVisibleItemIndex }
-            .collect { idx ->
-                state.loaded.getOrNull(idx)?.let { vm.onChapterVisible(it.id) }
+    // Track which chapter is at the top of the viewport. The list index counts
+    // LazyColumn items (divider + title + body per chapter), not chapters, so
+    // derive the chapter id from the item key instead of the index.
+    LaunchedEffect(listState) {
+        snapshotFlow {
+            listState.layoutInfo.visibleItemsInfo.firstOrNull()?.key as? String
+        }.collect { key ->
+            chapterIdFromKey(key)?.let { vm.onChapterVisible(it) }
+        }
+    }
+
+    // Persist the reading position (top chapter + pixel offset into its body),
+    // debounced via collectLatest so scrolling doesn't hit the DB every frame.
+    LaunchedEffect(listState) {
+        snapshotFlow { readerPosition(listState) }
+            .collectLatest { pos ->
+                if (pos != null) {
+                    delay(500)
+                    vm.saveProgress(pos.first, pos.second)
+                }
             }
+    }
+
+    // Restore the saved in-chapter position once the opening chapter is loaded.
+    LaunchedEffect(state.loading) {
+        if (!state.loading && state.error == null) {
+            val offset = vm.consumePendingScrollOffset()
+            val pos = state.loaded.indexOfFirst { it.id == chapterId }
+            if (offset > 0 && pos >= 0) {
+                // Items per chapter: divider (all but the first) + title + body,
+                // plus a loading row on top while a previous chapter prepends.
+                val leading = if (state.prepending) 1 else 0
+                val bodyIndex = leading + (if (pos == 0) 1 else 3 * pos + 1)
+                listState.scrollToItem(bodyIndex, offset)
+            }
+        }
+    }
+
+    // Final position flush when leaving the reader; saveProgress runs on the
+    // app scope, so it survives the ViewModel being cleared on back-navigation.
+    DisposableEffect(Unit) {
+        onDispose {
+            readerPosition(listState)?.let { (id, offset) -> vm.saveProgress(id, offset) }
+        }
     }
 
     // Mark a chapter read only once its body has been fully scrolled past — i.e.
@@ -402,6 +443,22 @@ private fun htmlToParagraphs(html: String): List<String> {
         .split(Regex("\n+"))
         .map { it.trim() }
         .filter { it.isNotEmpty() }
+}
+
+/** Chapter id encoded in a reader list key ("title-<id>" / "body-<id>" / "divider-<id>"). */
+private fun chapterIdFromKey(key: String?): Long? =
+    key?.substringAfterLast('-')?.toLongOrNull()
+
+/**
+ * The current reading position: the chapter at the top of the viewport and the
+ * pixel offset into its body (0 while the title or divider is still visible).
+ */
+private fun readerPosition(listState: LazyListState): Pair<Long, Int>? {
+    val first = listState.layoutInfo.visibleItemsInfo.firstOrNull() ?: return null
+    val key = first.key as? String ?: return null
+    val id = chapterIdFromKey(key) ?: return null
+    val offset = if (key.startsWith("body-")) listState.firstVisibleItemScrollOffset else 0
+    return id to offset
 }
 
 /** A window of [full] around the first occurrence of [selected], for context. */
