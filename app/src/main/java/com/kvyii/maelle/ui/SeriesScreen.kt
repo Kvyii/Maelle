@@ -180,10 +180,19 @@ fun SeriesScreen(
                                 .clickable { synopsisExpanded = !synopsisExpanded },
                         )
                     }
-                    // Resume picks up at the start of the most recently opened chapter
-                    // (not the last *finished* one), so returning to the reader never
-                    // requires scrolling back to find your spot.
-                    val resumeChapter = state.chapters.firstOrNull { it.id == series?.lastReadChapterId }
+                    // Resume follows the e-reader convention: the further of (a) the
+                    // most recently opened chapter and (b) the chapter after the
+                    // highest fully-read one — so bulk-marking chapters read moves the
+                    // resume point forward, and so does simply reading ahead, without
+                    // either touching the finished-scrolling read logic.
+                    val lastOpened = state.chapters.firstOrNull { it.id == series?.lastReadChapterId }
+                    // Chapters are newest-first: the first read entry is the highest read.
+                    val highestRead = state.chapters.firstOrNull { it.isRead }
+                    val nextUnread = highestRead?.let { hr ->
+                        state.chapters.lastOrNull { it.orderIndex > hr.orderIndex }
+                    } ?: highestRead
+                    val resumeChapter = listOfNotNull(lastOpened, nextUnread)
+                        .maxByOrNull { it.orderIndex }
                         ?: state.chapters.lastOrNull()
                     resumeChapter?.let { chapter ->
                         Button(

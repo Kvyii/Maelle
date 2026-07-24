@@ -22,7 +22,8 @@ class MaelleApplication : Application() {
 
 /** Minimal manual DI — a rewrite this size doesn't need Hilt. */
 class AppContainer(app: MaelleApplication) {
-    private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    /** App-lifetime scope for work that must outlive a screen (downloads, progress saves). */
+    val appScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     val settings = SettingsRepository(app)
     val library = LibraryRepository(app, settings)

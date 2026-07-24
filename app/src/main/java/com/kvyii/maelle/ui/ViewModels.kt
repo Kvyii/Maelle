@@ -302,6 +302,11 @@ class ReaderViewModel(
     private var firstIndex = -1
     private var lastIndex = -1
 
+    // Saved scroll position to restore when reopening the last-read chapter.
+    // Consumed once so config changes don't re-scroll an already-positioned reader.
+    private var pendingScrollOffset = 0
+    fun consumePendingScrollOffset(): Int = pendingScrollOffset.also { pendingScrollOffset = 0 }
+
     init {
         viewModelScope.launch {
             chapters = c.library.orderedChapters(seriesId)
@@ -313,6 +318,10 @@ class ReaderViewModel(
                 _state.value = _state.value.copy(loading = false, error = "Chapter not found")
                 return@launch
             }
+            val series = c.library.getSeries(seriesId)
+            val restoreOffset =
+                if (series?.lastReadChapterId == chapter.id) series.lastReadScrollOffset else 0
+            pendingScrollOffset = restoreOffset
             try {
                 val body = c.library.chapterText(chapter.id)
                 _state.value = _state.value.copy(
@@ -321,7 +330,7 @@ class ReaderViewModel(
                     loading = false,
                     atLastChapter = lastIndex >= chapters.lastIndex,
                 )
-                c.library.setLastReadChapter(seriesId, chapter.id)
+                c.library.setLastReadChapter(seriesId, chapter.id, restoreOffset)
             } catch (e: Exception) {
                 _state.value = _state.value.copy(loading = false, error = e.message ?: "Failed to load")
             }
@@ -373,9 +382,16 @@ class ReaderViewModel(
         if (_state.value.title != chapter.name) {
             _state.value = _state.value.copy(title = chapter.name)
         }
-        // Track reading position, but do NOT mark read yet — that happens only
-        // once the reader scrolls to the bottom of the chapter.
-        viewModelScope.launch { c.library.setLastReadChapter(seriesId, chapterId) }
+    }
+
+    /**
+     * Persist the reading position: the chapter at the top of the viewport plus
+     * the pixel offset into its body. Runs on the app scope so the final save on
+     * back-navigation isn't cancelled with the ViewModel. Does NOT mark read —
+     * that happens only when the chapter is scrolled fully past.
+     */
+    fun saveProgress(chapterId: Long, scrollOffset: Int) {
+        c.appScope.launch { c.library.setLastReadChapter(seriesId, chapterId, scrollOffset) }
     }
 
     /** Called when the reader has scrolled to the end of a chapter's body. */

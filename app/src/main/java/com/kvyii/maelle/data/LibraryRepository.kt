@@ -33,6 +33,7 @@ class LibraryRepository(context: Context, private val settings: SettingsReposito
 
     fun observeLibrary(): Flow<List<SeriesEntity>> = seriesDao.observeLibrary()
     fun observeSeries(id: Long): Flow<SeriesEntity?> = seriesDao.observeSeries(id)
+    suspend fun getSeries(id: Long): SeriesEntity? = seriesDao.getSeries(id)
     fun observeChapters(seriesId: Long): Flow<List<ChapterEntity>> =
         chapterDao.observeChaptersNewestFirst(seriesId)
     fun observeReadCount(seriesId: Long): Flow<Int> = chapterDao.observeReadCount(seriesId)
@@ -154,8 +155,8 @@ class LibraryRepository(context: Context, private val settings: SettingsReposito
         chapterDao.setDownloadPath(chapterId, null)
     }
 
-    suspend fun setLastReadChapter(seriesId: Long, chapterId: Long) =
-        seriesDao.setLastReadChapter(seriesId, chapterId, System.currentTimeMillis())
+    suspend fun setLastReadChapter(seriesId: Long, chapterId: Long, scrollOffset: Int = 0) =
+        seriesDao.setLastReadChapter(seriesId, chapterId, System.currentTimeMillis(), scrollOffset)
 
     private fun LoadResponse.chapters(): List<ChapterData> = when (this) {
         is StreamResponse -> data

@@ -28,6 +28,8 @@ data class SeriesEntity(
     val lastReadChapterId: Long? = null,
     /** When the user last opened a chapter of this series; drives library order. */
     val lastReadAt: Long = 0,
+    /** Pixel offset into [lastReadChapterId]'s body, so Resume returns mid-chapter. */
+    val lastReadScrollOffset: Int = 0,
 )
 
 /**

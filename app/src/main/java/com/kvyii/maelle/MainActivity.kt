@@ -41,7 +41,7 @@ class MainActivity : ComponentActivity() {
 private val ClaireColors = lightColorScheme(
     primary = Color(0xFF6D4FA3),
     onPrimary = Color.White,
-    secondary = Color(0xFF17847A),
+    secondary = Color(0xFF00A0FF),
     onSecondary = Color.White,
     background = Color(0xFFFDFBF7),
     onBackground = Color(0xFF1D1B20),
@@ -51,13 +51,13 @@ private val ClaireColors = lightColorScheme(
     onSurfaceVariant = Color(0xFF4A4458),
 )
 
-/** "Obscur" — pure-black OLED with hacker magenta and teal highlights. */
+/** "Obscur" — pure-black OLED with hacker magenta and electric-blue highlights. */
 private val ObscurColors = darkColorScheme(
     primary = Color(0xFFFF50FF),
     onPrimary = Color(0xFF20002A),
-    secondary = Color(0xFF00E5C7),
-    onSecondary = Color(0xFF00201B),
-    tertiary = Color(0xFF00E5C7),
+    secondary = Color(0xFF00A0FF),
+    onSecondary = Color(0xFF001B2E),
+    tertiary = Color(0xFF00A0FF),
     background = Color.Black,
     onBackground = Color(0xFFE4E0EC),
     surface = Color.Black,

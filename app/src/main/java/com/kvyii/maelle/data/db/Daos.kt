@@ -46,8 +46,11 @@ interface SeriesDao {
     @Query("UPDATE series SET inLibrary = :inLibrary WHERE id = :id")
     suspend fun setInLibrary(id: Long, inLibrary: Boolean)
 
-    @Query("UPDATE series SET lastReadChapterId = :chapterId, lastReadAt = :readAt WHERE id = :seriesId")
-    suspend fun setLastReadChapter(seriesId: Long, chapterId: Long, readAt: Long)
+    @Query(
+        "UPDATE series SET lastReadChapterId = :chapterId, lastReadAt = :readAt, " +
+            "lastReadScrollOffset = :scrollOffset WHERE id = :seriesId"
+    )
+    suspend fun setLastReadChapter(seriesId: Long, chapterId: Long, readAt: Long, scrollOffset: Int)
 
     /** Insert or return the existing row id for this series. */
     @Transaction

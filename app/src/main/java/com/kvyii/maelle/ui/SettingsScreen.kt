@@ -334,7 +334,7 @@ fun ThemesScreen(container: AppContainer, onBack: () -> Unit) {
             )
             ThemeOption(
                 theme = AppTheme.Obscur,
-                description = "Pure-black OLED with violet and teal highlights.",
+                description = "Pure-black OLED with violet and blue highlights.",
                 selected = current == AppTheme.Obscur,
                 onSelect = vm::setTheme,
             )
